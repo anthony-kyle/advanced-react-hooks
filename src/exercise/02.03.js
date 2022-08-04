@@ -10,23 +10,6 @@ import {
   PokemonErrorBoundary,
 } from '../pokemon'
 
-
-const useSafeDispatch = (dispatch) => {
-
-  const mountedRef = React.useRef(false);
-
-  React.useLayoutEffect(()=>{
-    mountedRef.current = true;
-    return ()=>{
-      mountedRef.current = false;
-    }
-  }, [])
-
-  React.useCallback((...args) => {
-    if (mountedRef.current) dispatch(...args)
-  }, [dispatch])
-}
-
 // 🐨 this is going to be our generic asyncReducer
 function asyncReducer(state, action) {
   switch (action.type) {
@@ -48,14 +31,12 @@ function asyncReducer(state, action) {
   }
 }
 function useAsync(initialState) {
-  const [state, unsafeDispatch] = React.useReducer(asyncReducer, {
+  const [state, dispatch] = React.useReducer(asyncReducer, {
     status: 'idle',
     data: null,
     error: null,
     ...initialState,
   })
-
- const dispatch = useSafeDispatch(unsafeDispatch)
 
   const run = React.useCallback(promise => {
     dispatch({type: 'pending'})
@@ -67,12 +48,14 @@ function useAsync(initialState) {
         dispatch({type: 'rejected', error})
       },
     )
-  }, [dispatch])
+  }, [])
 
   return {...state, run}
 }
 
 function PokemonInfo({pokemonName}) {
+  // 💰 destructuring this here now because it just felt weird to call this
+  // "state" still when it's also returning a function called "run" 🙃
   const {
     data: pokemon,
     status,

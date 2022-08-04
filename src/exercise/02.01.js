@@ -10,23 +10,6 @@ import {
   PokemonErrorBoundary,
 } from '../pokemon'
 
-
-const useSafeDispatch = (dispatch) => {
-
-  const mountedRef = React.useRef(false);
-
-  React.useLayoutEffect(()=>{
-    mountedRef.current = true;
-    return ()=>{
-      mountedRef.current = false;
-    }
-  }, [])
-
-  React.useCallback((...args) => {
-    if (mountedRef.current) dispatch(...args)
-  }, [dispatch])
-}
-
 // 🐨 this is going to be our generic asyncReducer
 function asyncReducer(state, action) {
   switch (action.type) {
@@ -47,17 +30,19 @@ function asyncReducer(state, action) {
     }
   }
 }
-function useAsync(initialState) {
-  const [state, unsafeDispatch] = React.useReducer(asyncReducer, {
+function useAsync(asyncCallback, initialState, dependencies) {
+  const [state, dispatch] = React.useReducer(asyncReducer, {
     status: 'idle',
     data: null,
     error: null,
     ...initialState,
   })
 
- const dispatch = useSafeDispatch(unsafeDispatch)
-
-  const run = React.useCallback(promise => {
+  React.useEffect(() => {
+    const promise = asyncCallback()
+    if (!promise) {
+      return
+    }
     dispatch({type: 'pending'})
     promise.then(
       data => {
@@ -67,26 +52,26 @@ function useAsync(initialState) {
         dispatch({type: 'rejected', error})
       },
     )
-  }, [dispatch])
+  }, dependencies)
 
-  return {...state, run}
+  return state
 }
 
 function PokemonInfo({pokemonName}) {
-  const {
-    data: pokemon,
-    status,
-    error,
-    run,
-  } = useAsync({status: pokemonName ? 'pending' : 'idle'})
+  const state = useAsync(
+    () => {
+      if (!pokemonName) {
+        return
+      }
+      return fetchPokemon(pokemonName)
+    },
+    {
+      status: pokemonName ? 'pending' : 'idle',
+    },
+    [pokemonName],
+  )
 
-  React.useEffect(() => {
-    if (!pokemonName) {
-      return
-    }
-    const pokemonPromise = fetchPokemon(pokemonName)
-    run(pokemonPromise)
-  }, [pokemonName, run])
+  const {data, status, error} = state
 
   switch (status) {
     case 'idle':
@@ -96,7 +81,7 @@ function PokemonInfo({pokemonName}) {
     case 'rejected':
       throw error
     case 'resolved':
-      return <PokemonDataView pokemon={pokemon} />
+      return <PokemonDataView pokemon={data} />
     default:
       throw new Error('This should be impossible')
   }
